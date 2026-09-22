@@ -24,26 +24,42 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const configRef = useRef<JarvisConfig>();
+  const shouldReconnectRef = useRef(true);
+  const reconnectAttemptsRef = useRef(0);
+  const mountedRef = useRef(true);
+  const connectingRef = useRef(false);
 
   const updateStatus = useCallback((newStatus: typeof status) => {
+    if (!mountedRef.current) return;
     setStatus(newStatus);
     onStatus?.(newStatus);
   }, [onStatus]);
 
-  const connect = useCallback((config: JarvisConfig) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  const doConnect = useCallback((config: JarvisConfig) => {
+    if (connectingRef.current) return;
+    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return;
+    }
     
+    connectingRef.current = true;
     configRef.current = config;
+    shouldReconnectRef.current = true;
+    reconnectAttemptsRef.current = 0;
     updateStatus('connecting');
 
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      connectingRef.current = false;
+      if (!mountedRef.current || !shouldReconnectRef.current) {
+        ws.close();
+        return;
+      }
       console.log('Connected to JARVIS server');
       updateStatus('connected');
+      reconnectAttemptsRef.current = 0;
       
-      // Send initial config
       ws.send(JSON.stringify({
         type: 'config',
         payload: config
@@ -51,6 +67,7 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
     };
 
     ws.onmessage = (event) => {
+      if (!mountedRef.current) return;
       try {
         const message: ServerMessage = JSON.parse(event.data);
         handleServerMessage(message);
@@ -60,29 +77,46 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
     };
 
     ws.onclose = () => {
+      connectingRef.current = false;
+      if (!mountedRef.current) return;
       console.log('Disconnected from JARVIS server');
       updateStatus('disconnected');
       
-      // Auto-reconnect after 3 seconds
-      reconnectTimeoutRef.current = setTimeout(() => {
-        if (configRef.current) {
-          connect(configRef.current);
-        }
-      }, 3000);
+      if (shouldReconnectRef.current && mountedRef.current) {
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+        reconnectAttemptsRef.current += 1;
+        console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})...`);
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (shouldReconnectRef.current && configRef.current && mountedRef.current && !connectingRef.current) {
+            doConnect(configRef.current);
+          }
+        }, delay);
+      }
     };
 
     ws.onerror = (error) => {
+      connectingRef.current = false;
+      if (!mountedRef.current) return;
       console.error('WebSocket error:', error);
       updateStatus('error');
     };
   }, [updateStatus]);
 
+  const connect = useCallback((config: JarvisConfig) => {
+    doConnect(config);
+  }, [doConnect]);
+
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
-    wsRef.current?.close();
-    wsRef.current = null;
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    connectingRef.current = false;
     updateStatus('disconnected');
   }, [updateStatus]);
 
@@ -114,7 +148,6 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
         onResponse?.(message.payload as AssistantResponse);
         break;
       case 'status':
-        // Handle status updates if needed
         break;
       case 'error':
         console.error('Server error:', message.payload);
@@ -122,13 +155,18 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
     }
   }, [onTranscript, onResponse]);
 
-  // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      shouldReconnectRef.current = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      wsRef.current?.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, []);
 

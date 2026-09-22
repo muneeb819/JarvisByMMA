@@ -38,7 +38,7 @@ Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but n
   useEffect(() => {
     connect(config);
     return () => disconnect();
-  }, [config, connect, disconnect]);
+  }, []); // Only run on mount/unmount - StrictMode safe
 
   const handleConfigChange = useCallback((newConfig: Partial<JarvisConfig>) => {
     setConfig(prev => ({ ...prev, ...newConfig }));
