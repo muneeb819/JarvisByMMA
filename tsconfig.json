@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "outDir": "./dist",
+    "outDir": "./dist-server",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
@@ -24,10 +24,8 @@
     "allowSyntheticDefaultImports": true,
     "moduleDetection": "force",
     "noEmit": false,
-    "types": [],
-    "composite": true
+    "types": ["node"]
   },
   "include": ["src/server/**/*", "src/shared/**/*", "src/global.d.ts"],
-  "exclude": ["node_modules", "dist", "src/client"],
-  "references": [{ "path": "./tsconfig.client.json" }]
+  "exclude": ["node_modules", "dist", "src/client"]
 }

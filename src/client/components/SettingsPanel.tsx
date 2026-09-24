@@ -9,20 +9,16 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ config, onChange, onClose, isConnected }: SettingsPanelProps) {
-  const [localConfig, setLocalConfig] = useState(config);
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState(config.apiKey || '');
   const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
-    setLocalConfig(config);
     setApiKey(config.apiKey || '');
-  }, [config]);
+  }, [config.apiKey]);
 
   const handleChange = useCallback((key: keyof JarvisConfig, value: unknown) => {
-    const newConfig = { ...localConfig, [key]: value };
-    setLocalConfig(newConfig);
-    onChange(newConfig);
-  }, [localConfig, onChange]);
+    onChange({ ...config, [key]: value });
+  }, [config, onChange]);
 
   const handleApiKeyChange = useCallback((value: string) => {
     setApiKey(value);
@@ -61,7 +57,7 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
             <div className="setting-row">
               <label>Provider</label>
               <select 
-                value={localConfig.llmProvider} 
+                value={config.llmProvider} 
                 onChange={(e) => handleChange('llmProvider', e.target.value)}
               >
                 <option value="openai">OpenAI</option>
@@ -75,7 +71,7 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
               <label>Model</label>
               <input
                 type="text"
-                value={localConfig.llmModel}
+                value={config.llmModel}
                 onChange={(e) => handleChange('llmModel', e.target.value)}
                 placeholder="gpt-4-turbo-preview"
               />
@@ -109,7 +105,7 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
             <div className="setting-row">
               <label>Language</label>
               <select 
-                value={localConfig.language} 
+                value={config.language} 
                 onChange={(e) => handleChange('language', e.target.value)}
               >
                 <option value="en-US">English (US)</option>
@@ -126,7 +122,7 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
               <label>Wake Word</label>
               <input
                 type="text"
-                value={localConfig.wakeWord || ''}
+                value={config.wakeWord || ''}
                 onChange={(e) => handleChange('wakeWord', e.target.value || undefined)}
                 placeholder="jarvis (optional)"
               />
@@ -136,7 +132,7 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
               <label>Voice</label>
               <input
                 type="text"
-                value={localConfig.voice || ''}
+                value={config.voice || ''}
                 onChange={(e) => handleChange('voice', e.target.value || undefined)}
                 placeholder="Browser default"
               />
@@ -146,7 +142,7 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
           <section className="settings-section">
             <h3>System Prompt</h3>
             <textarea
-              value={localConfig.systemPrompt}
+              value={config.systemPrompt}
               onChange={(e) => handleSystemPromptChange(e.target.value)}
               rows={8}
               className="system-prompt"

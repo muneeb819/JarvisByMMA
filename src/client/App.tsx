@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { VoiceVisualizer } from './components/VoiceVisualizer';
 import { TranscriptLog } from './components/TranscriptLog';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -21,12 +21,6 @@ Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but n
   
   const [showSettings, setShowSettings] = useState(false);
   const [transcripts, setTranscripts] = useState<Array<VoiceCommand | AssistantResponse>>([]);
-  const configRef = useRef(config);
-
-  // Keep config ref updated
-  useEffect(() => {
-    configRef.current = config;
-  }, [config]);
 
   const {
     status,
@@ -51,7 +45,7 @@ Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but n
     return () => disconnect();
   }, [connect, disconnect]);
 
-  // Stable handleVoiceCommand - uses useMemo to prevent recreation
+  // Stable handleVoiceCommand
   const handleVoiceCommand = useCallback((transcript: string, confidence: number) => {
     sendCommand({ 
       id: generateId(),

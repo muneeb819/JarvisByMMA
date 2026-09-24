@@ -3,6 +3,8 @@ node_modules/
 
 # Build outputs
 dist/
+dist-server/
+dist-client/
 build/
 
 # TypeScript cache
@@ -10,18 +12,10 @@ build/
 tsconfig.tsbuildinfo
 
 # Build artifacts in source
-src/shared/types.d.ts
-src/shared/types.js
+src/shared/*.d.ts
+src/shared/*.js
 src/client/**/*.js
 src/client/**/*.d.ts
-!src/client/**/*.css
-!src/client/**/*.tsx
-!src/client/**/*.tsx!
-!src/**/*.css
-!src/**/*.tsx
-!src/**/*.ts
-!src/**/*.json
-!src/**/*.html
 
 # Environment files
 .env
@@ -46,10 +40,6 @@ yarn-error.log*
 
 # Testing
 coverage/
-
-# Test
-test-results/
-playwright-report/
 
 # Misc
 *.pem
@@ -97,5 +87,5 @@ dist
 # Optional REPL process
 .node_repl_history
 
-# Output previosly seen elsewhere
+# Output previously seen elsewhere
 .session

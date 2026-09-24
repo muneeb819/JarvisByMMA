@@ -18,8 +18,8 @@
       "@/*": ["src/*"],
       "@shared/*": ["src/shared/*"]
     },
-    "types": [],
-    "composite": true,
+    "types": ["node", "dom"],
+    "composite": false,
     "outDir": "./dist/client",
     "rootDir": "./src"
   },

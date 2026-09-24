@@ -7,8 +7,10 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite",
-    "build": "tsc -b && vite build",
-    "start": "node dist/server/index.js"
+    "build": "tsc --project tsconfig.json && vite build",
+    "build:server": "tsc --project tsconfig.json",
+    "build:client": "vite build",
+    "start": "node dist-server/server/index.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

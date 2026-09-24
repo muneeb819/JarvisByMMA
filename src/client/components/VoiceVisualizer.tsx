@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { VoiceCommand } from '@shared/types';
 
 interface VoiceVisualizerProps {
@@ -19,6 +19,7 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const onVoiceCommandRef = useRef(onVoiceCommand);
   const isListeningRef = useRef(isListening);
+  const isListeningStateRef = useRef(isListeningState);
 
   // Keep refs updated to avoid stale closures
   useEffect(() => {
@@ -28,6 +29,10 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  useEffect(() => {
+    isListeningStateRef.current = isListeningState;
+  }, [isListeningState]);
 
   // Initialize Speech Recognition - only once
   useEffect(() => {
@@ -43,8 +48,6 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
     recog.interimResults = true;
     recog.lang = 'en-US';
     recog.maxAlternatives = 3;
-    recog.abortOnSoundStart = false;
-    recog.energyThreshold = 0.1;
 
     recog.onresult = (event: SpeechRecognitionEvent) => {
       let finalTranscript = '';
@@ -95,7 +98,10 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
 
   // Audio visualization
   const updateAudioLevel = useCallback(() => {
-    if (!analyserRef.current) return;
+    if (!analyserRef.current) {
+      animationRef.current = requestAnimationFrame(updateAudioLevel);
+      return;
+    }
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     analyserRef.current.getByteFrequencyData(dataArray);
     const sum = dataArray.reduce((a, b) => a + b, 0);
@@ -105,7 +111,7 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
   }, []);
 
   const startListening = useCallback(async () => {
-    if (!recognitionRef.current || isListeningState) return;
+    if (!recognitionRef.current || isListeningStateRef.current) return;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -129,10 +135,10 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
     } catch (err) {
       console.error('Failed to start listening:', err);
     }
-  }, [isListeningState, updateAudioLevel]);
+  }, []);
 
   const stopListening = useCallback(() => {
-    if (!recognitionRef.current || !isListeningState) return;
+    if (!recognitionRef.current || !isListeningStateRef.current) return;
     
     try { recognitionRef.current.stop(); } catch (e) {}
     setIsListeningState(false);
@@ -146,24 +152,24 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
     audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;
-  }, [isListeningState]);
+  }, []);
 
   const toggleListening = useCallback(() => {
-    if (isListeningState) {
+    if (isListeningStateRef.current) {
       stopListening();
     } else {
       startListening();
     }
-  }, [isListeningState, startListening, stopListening]);
+  }, [startListening, stopListening]);
 
   // Auto-start when connected
   useEffect(() => {
-    if (status === 'connected' && !isListeningState) {
+    if (status === 'connected' && !isListeningStateRef.current) {
       startListening();
-    } else if (status !== 'connected' && isListeningState) {
+    } else if (status !== 'connected' && isListeningStateRef.current) {
       stopListening();
     }
-  }, [status, isListeningState, startListening, stopListening]);
+  }, [status, startListening, stopListening]);
 
   // Cleanup
   useEffect(() => {

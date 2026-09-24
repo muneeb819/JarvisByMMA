@@ -14,7 +14,7 @@ import { DEFAULT_CONFIG } from '../shared/types.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+const PORT: number = (process.env.PORT ? parseInt(process.env.PORT, 10) : 3001);
 
 // In-memory session store (replace with Redis in production)
 const sessions = new Map<string, Session>();
@@ -32,8 +32,12 @@ function generateId(): string {
 }
 
 function broadcast(session: Session, message: ServerMessage) {
-  if (session.ws.readyState === WebSocket.OPEN) {
-    session.ws.send(JSON.stringify(message));
+  if (session.ws.readyState === WebSocket.OPEN || session.ws.readyState === WebSocket.CONNECTING) {
+    try {
+      session.ws.send(JSON.stringify(message));
+    } catch (e) {
+      console.error('Failed to send message:', e);
+    }
   }
 }
 
@@ -283,6 +287,8 @@ wss.on('connection', (ws) => {
 
   ws.on('error', (err) => {
     console.error(`Session error ${session.id}:`, err);
+    try { ws.close(); } catch (e) {}
+    sessions.delete(session.id);
   });
 
   broadcast(session, { 
@@ -306,4 +312,13 @@ process.on('SIGINT', () => {
   wss.close(() => {
     server.close(() => process.exit(0));
   });
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
 });

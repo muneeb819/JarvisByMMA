@@ -57,5 +57,3 @@ You can control smart home devices, answer questions, run automation tasks, and 
 Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but not excessively.`
 };
 
-/** Type for message items in the transcript log */
-export type TranscriptItem = VoiceCommand | AssistantResponse;
