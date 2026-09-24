@@ -28,12 +28,18 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
   const reconnectAttemptsRef = useRef(0);
   const mountedRef = useRef(true);
   const connectingRef = useRef(false);
+  const callbacksRef = useRef({ onTranscript, onResponse, onStatus });
+
+  // Keep callbacks ref updated
+  useEffect(() => {
+    callbacksRef.current = { onTranscript, onResponse, onStatus };
+  }, [onTranscript, onResponse, onStatus]);
 
   const updateStatus = useCallback((newStatus: typeof status) => {
     if (!mountedRef.current) return;
     setStatus(newStatus);
-    onStatus?.(newStatus);
-  }, [onStatus]);
+    callbacksRef.current.onStatus?.(newStatus);
+  }, []);
 
   const doConnect = useCallback((config: JarvisConfig) => {
     if (connectingRef.current) return;
@@ -70,7 +76,18 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
       if (!mountedRef.current) return;
       try {
         const message: ServerMessage = JSON.parse(event.data);
-        handleServerMessage(message);
+        const { onTranscript, onResponse } = callbacksRef.current;
+        switch (message.type) {
+          case 'transcript':
+            onTranscript?.(message.payload as VoiceCommand);
+            break;
+          case 'response':
+            onResponse?.(message.payload as AssistantResponse);
+            break;
+          case 'error':
+            console.error('Server error:', message.payload);
+            break;
+        }
       } catch (e) {
         console.error('Failed to parse server message:', e);
       }
@@ -95,10 +112,10 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
       }
     };
 
-    ws.onerror = (error) => {
+    ws.onerror = () => {
       connectingRef.current = false;
       if (!mountedRef.current) return;
-      console.error('WebSocket error:', error);
+      console.error('WebSocket error');
       updateStatus('error');
     };
   }, [updateStatus]);
@@ -130,30 +147,18 @@ export function useJarvis(options: UseJarvisOptions = {}): UseJarvisReturn {
   }, []);
 
   const updateConfig = useCallback((newConfig: Partial<JarvisConfig>) => {
-    configRef.current = { ...configRef.current, ...newConfig } as JarvisConfig;
+    const mergedConfig = { ...configRef.current, ...newConfig } as JarvisConfig;
+    configRef.current = mergedConfig;
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'config',
         payload: newConfig
       }));
+    } else {
+      // Not connected - reconnect with new config
+      doConnect(mergedConfig);
     }
-  }, []);
-
-  const handleServerMessage = useCallback((message: ServerMessage) => {
-    switch (message.type) {
-      case 'transcript':
-        onTranscript?.(message.payload as VoiceCommand);
-        break;
-      case 'response':
-        onResponse?.(message.payload as AssistantResponse);
-        break;
-      case 'status':
-        break;
-      case 'error':
-        console.error('Server error:', message.payload);
-        break;
-    }
-  }, [onTranscript, onResponse]);
+  }, [doConnect]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { VoiceCommand } from '@shared/types';
 
 interface VoiceVisualizerProps {
@@ -8,16 +8,28 @@ interface VoiceVisualizerProps {
 }
 
 export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVisualizerProps) {
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [transcript, setTranscript] = useState('');
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [isListeningState, setIsListeningState] = useState(false);
+  
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number>();
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const onVoiceCommandRef = useRef(onVoiceCommand);
+  const isListeningRef = useRef(isListening);
 
-  // Initialize Speech Recognition
+  // Keep refs updated to avoid stale closures
+  useEffect(() => {
+    onVoiceCommandRef.current = onVoiceCommand;
+  }, [onVoiceCommand]);
+
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  // Initialize Speech Recognition - only once
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -31,8 +43,10 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
     recog.interimResults = true;
     recog.lang = 'en-US';
     recog.maxAlternatives = 3;
+    recog.abortOnSoundStart = false;
+    recog.energyThreshold = 0.1;
 
-    recog.onresult = (event) => {
+    recog.onresult = (event: SpeechRecognitionEvent) => {
       let finalTranscript = '';
       let interimTranscript = '';
       let maxConfidence = 0;
@@ -48,58 +62,52 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
         }
       }
 
-      setTranscript(interimTranscript || finalTranscript);
+      setLiveTranscript(interimTranscript || finalTranscript);
 
       if (finalTranscript.trim()) {
-        onVoiceCommand(finalTranscript.trim(), maxConfidence || 0.9);
-        setTranscript('');
+        onVoiceCommandRef.current(finalTranscript.trim(), maxConfidence || 0.9);
+        setLiveTranscript('');
       }
     };
 
-    recog.onerror = (event) => {
+    recog.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
       console.error('Speech recognition error:', event.error);
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setIsRecording(false);
-      }
+      setIsListeningState(false);
     };
 
     recog.onend = () => {
-      if (isRecording) {
-        // Auto-restart if still supposed to be recording
+      if (isListeningRef.current) {
         try {
           recog.start();
         } catch (e) {
-          setIsRecording(false);
+          // Ignore restart errors
         }
       }
     };
 
-    setRecognition(recog);
+    recognitionRef.current = recog;
+
     return () => {
-      recog.stop();
+      try { recog.stop(); } catch (e) {}
     };
-  }, [onVoiceCommand]);
+  }, []); // Empty deps - only created once
 
   // Audio visualization
   const updateAudioLevel = useCallback(() => {
     if (!analyserRef.current) return;
-
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     analyserRef.current.getByteFrequencyData(dataArray);
-    
-    // Calculate average volume
     const sum = dataArray.reduce((a, b) => a + b, 0);
     const average = sum / dataArray.length;
     setAudioLevel(average / 255);
-
     animationRef.current = requestAnimationFrame(updateAudioLevel);
   }, []);
 
   const startListening = useCallback(async () => {
-    if (!recognition || isRecording) return;
+    if (!recognitionRef.current || isListeningState) return;
 
     try {
-      // Get microphone access for visualization
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { echoCancellation: true, noiseSuppression: true } 
       });
@@ -115,19 +123,19 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      recognition.start();
-      setIsRecording(true);
+      recognitionRef.current.start();
+      setIsListeningState(true);
       updateAudioLevel();
     } catch (err) {
       console.error('Failed to start listening:', err);
     }
-  }, [recognition, isRecording, updateAudioLevel]);
+  }, [isListeningState, updateAudioLevel]);
 
   const stopListening = useCallback(() => {
-    if (!recognition || !isRecording) return;
+    if (!recognitionRef.current || !isListeningState) return;
     
-    recognition.stop();
-    setIsRecording(false);
+    try { recognitionRef.current.stop(); } catch (e) {}
+    setIsListeningState(false);
     
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
@@ -138,28 +146,45 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
     audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;
-  }, [recognition, isRecording]);
+  }, [isListeningState]);
 
   const toggleListening = useCallback(() => {
-    if (isRecording) {
+    if (isListeningState) {
       stopListening();
     } else {
       startListening();
     }
-  }, [isRecording, startListening, stopListening]);
+  }, [isListeningState, startListening, stopListening]);
 
   // Auto-start when connected
   useEffect(() => {
-    if (status === 'connected' && !isRecording) {
+    if (status === 'connected' && !isListeningState) {
       startListening();
-    } else if (status !== 'connected' && isRecording) {
+    } else if (status !== 'connected' && isListeningState) {
       stopListening();
     }
-  }, [status, isRecording, startListening, stopListening]);
+  }, [status, isListeningState, startListening, stopListening]);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+      audioContextRef.current?.close();
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
+  const visualizerClasses = [
+    'visualizer-core',
+    isListeningState ? 'active' : ''
+  ].filter(Boolean).join(' ');
 
   return (
     <div className="voice-visualizer">
-      <div className="visualizer-core" data-active={isRecording}>
+      <div className={visualizerClasses} data-active={isListeningState}>
         <svg className="orbital-rings" viewBox="0 0 300 300">
           <defs>
             <filter id="glow">
@@ -171,7 +196,6 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
             </filter>
           </defs>
           
-          {/* Outer ring - pulses with audio level */}
           <circle
             className="ring outer"
             cx="150" cy="150" r={120 + audioLevel * 30}
@@ -179,7 +203,6 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
             style={{ filter: 'url(#glow)', opacity: 0.6 }}
           />
           
-          {/* Middle ring */}
           <circle
             className="ring middle"
             cx="150" cy="150" r={90 + audioLevel * 20}
@@ -187,7 +210,6 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
             style={{ filter: 'url(#glow)', opacity: 0.4 }}
           />
           
-          {/* Inner ring */}
           <circle
             className="ring inner"
             cx="150" cy="150" r={60 + audioLevel * 15}
@@ -195,7 +217,6 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
             style={{ filter: 'url(#glow)', opacity: 0.3 }}
           />
           
-          {/* Center core */}
           <circle
             className="core"
             cx="150" cy="150" r={30 + audioLevel * 20}
@@ -203,7 +224,6 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
             style={{ filter: 'url(#glow)' }}
           />
           
-          {/* Frequency bars */}
           {Array.from({ length: 32 }).map((_, i) => {
             const angle = (i / 32) * Math.PI * 2;
             const radius = 45 + audioLevel * 25;
@@ -228,16 +248,16 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
         <div className="visualizer-overlay">
           <div className="status-text">
             {status === 'connecting' && 'Initializing...'}
-            {status === 'connected' && !isRecording && 'Click to activate'}
-            {status === 'connected' && isRecording && 'Listening...'}
+            {status === 'connected' && !isListeningState && 'Click to activate'}
+            {status === 'connected' && isListeningState && 'Listening...'}
             {status === 'error' && 'Connection error'}
             {status === 'disconnected' && 'Disconnected'}
           </div>
           
-          {transcript && (
+          {liveTranscript && (
             <div className="live-transcript">
               <span className="transcript-prefix">▋</span>
-              <span>{transcript}</span>
+              <span>{liveTranscript}</span>
             </div>
           )}
         </div>
@@ -245,10 +265,10 @@ export function VoiceVisualizer({ status, isListening, onVoiceCommand }: VoiceVi
 
       <div className="visualizer-controls">
         <button
-          className={`mic-button ${isRecording ? 'recording' : ''}`}
+          className={`mic-button ${isListeningState ? 'recording' : ''}`}
           onClick={toggleListening}
           disabled={status !== 'connected'}
-          aria-label={isRecording ? 'Stop listening' : 'Start listening'}
+          aria-label={isListeningState ? 'Stop listening' : 'Start listening'}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { VoiceVisualizer } from './components/VoiceVisualizer';
 import { TranscriptLog } from './components/TranscriptLog';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -21,7 +21,13 @@ Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but n
   
   const [showSettings, setShowSettings] = useState(false);
   const [transcripts, setTranscripts] = useState<Array<VoiceCommand | AssistantResponse>>([]);
-  
+  const configRef = useRef(config);
+
+  // Keep config ref updated
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
+
   const {
     status,
     connect,
@@ -30,21 +36,22 @@ Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but n
     updateConfig,
     isConnected
   } = useJarvis({
-    onTranscript: (cmd: VoiceCommand) => setTranscripts(prev => [...prev, cmd]),
-    onResponse: (resp: AssistantResponse) => setTranscripts(prev => [...prev, resp]),
-    onStatus: (s) => {}
+    onTranscript: useCallback((cmd: VoiceCommand) => {
+      setTranscripts(prev => [...prev, cmd]);
+    }, []),
+    onResponse: useCallback((resp: AssistantResponse) => {
+      setTranscripts(prev => [...prev, resp]);
+    }, []),
+    onStatus: () => {}
   });
 
+  // Connect on mount with stable callbacks
   useEffect(() => {
     connect(config);
     return () => disconnect();
-  }, []); // Only run on mount/unmount - StrictMode safe
+  }, [connect, disconnect]);
 
-  const handleConfigChange = useCallback((newConfig: Partial<JarvisConfig>) => {
-    setConfig(prev => ({ ...prev, ...newConfig }));
-    updateConfig(newConfig);
-  }, [updateConfig]);
-
+  // Stable handleVoiceCommand - uses useMemo to prevent recreation
   const handleVoiceCommand = useCallback((transcript: string, confidence: number) => {
     sendCommand({ 
       id: generateId(),
@@ -53,6 +60,11 @@ Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but n
       timestamp: Date.now() 
     });
   }, [sendCommand]);
+
+  const handleConfigChange = useCallback((newConfig: Partial<JarvisConfig>) => {
+    setConfig(prev => ({ ...prev, ...newConfig }));
+    updateConfig(newConfig);
+  }, [updateConfig]);
 
   return (
     <div className="jarvis-app">

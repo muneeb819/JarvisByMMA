@@ -6,11 +6,13 @@ interface TranscriptLogProps {
   onClear: () => void;
 }
 
+/** Type guard to check if item is an AssistantResponse */
 function isAssistantResponse(item: VoiceCommand | AssistantResponse): item is AssistantResponse {
-  return 'role' in item && item.role === 'assistant';
+  return 'text' in item && !('transcript' in item);
 }
 
-function isVoiceCommand(item: VoiceCommand | AssistantResponse): item is VoiceCommand {
+/** Type guard to check if item is a VoiceCommand */
+function isVoiceCommandItem(item: VoiceCommand | AssistantResponse): item is VoiceCommand {
   return 'transcript' in item;
 }
 
@@ -56,8 +58,9 @@ export function TranscriptLog({ transcripts, onClear }: TranscriptLogProps) {
                 .reverse()
                 .map((item, idx) => {
                   const isAssistant = isAssistantResponse(item);
-                  const role = isAssistant ? 'assistant' : 'user';
-                  const content = isAssistant ? item.text : item.transcript;
+                  const isUser = isVoiceCommandItem(item);
+                  const role = isAssistant ? 'assistant' : isUser ? 'user' : 'unknown';
+                  const content = isAssistant ? item.text : isUser ? item.transcript : '';
                   
                   return (
                     <div 
@@ -66,7 +69,7 @@ export function TranscriptLog({ transcripts, onClear }: TranscriptLogProps) {
                     >
                       <div className="message-bubble">
                         <span className="role-label">
-                          {role === 'user' ? 'You' : 'JARVIS'}
+                          {role === 'user' ? 'You' : role === 'assistant' ? 'JARVIS' : 'Unknown'}
                         </span>
                         <p className="message-text">{content}</p>
                         <span className="message-time">

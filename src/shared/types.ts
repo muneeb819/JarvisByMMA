@@ -56,3 +56,6 @@ export const DEFAULT_CONFIG: JarvisConfig = {
 You can control smart home devices, answer questions, run automation tasks, and have natural conversations.
 Keep responses brief and conversational. Use "Sir" or "Ma'am" occasionally but not excessively.`
 };
+
+/** Type for message items in the transcript log */
+export type TranscriptItem = VoiceCommand | AssistantResponse;

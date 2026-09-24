@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { JarvisConfig } from '@shared/types';
 
 interface SettingsPanelProps {
@@ -11,30 +11,36 @@ interface SettingsPanelProps {
 export function SettingsPanel({ config, onChange, onClose, isConnected }: SettingsPanelProps) {
   const [localConfig, setLocalConfig] = useState(config);
   const [apiKey, setApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     setLocalConfig(config);
+    setApiKey(config.apiKey || '');
   }, [config]);
 
-  const handleChange = (key: keyof JarvisConfig, value: unknown) => {
+  const handleChange = useCallback((key: keyof JarvisConfig, value: unknown) => {
     const newConfig = { ...localConfig, [key]: value };
     setLocalConfig(newConfig);
     onChange(newConfig);
-  };
+  }, [localConfig, onChange]);
 
-  const handleApiKeyChange = (value: string) => {
+  const handleApiKeyChange = useCallback((value: string) => {
     setApiKey(value);
     handleChange('apiKey', value);
-  };
+  }, [handleChange]);
 
-  const handleSystemPromptChange = (value: string) => {
+  const handleSystemPromptChange = useCallback((value: string) => {
     handleChange('systemPrompt', value);
-  };
+  }, [handleChange]);
 
-  const testConnection = async () => {
+  const toggleApiKeyVisibility = useCallback(() => {
+    setShowApiKey(prev => !prev);
+  }, []);
+
+  const testConnection = useCallback(async () => {
     // Could add a test endpoint call here
     alert('Connection test would go here');
-  };
+  }, []);
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -79,12 +85,12 @@ export function SettingsPanel({ config, onChange, onClose, isConnected }: Settin
               <label>API Key</label>
               <div className="api-key-input">
                 <input
-                  type={apiKey ? 'text' : 'password'}
+                  type={showApiKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={(e) => handleApiKeyChange(e.target.value)}
                   placeholder={isConnected ? '••••••••' : 'Enter API key'}
                 />
-                <button type="button" className="toggle-visibility" onClick={() => {}}>
+                <button type="button" className="toggle-visibility" onClick={toggleApiKeyVisibility}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                     <circle cx="12" cy="12" r="3"/>

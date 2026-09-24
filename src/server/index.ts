@@ -2,10 +2,11 @@
  * JARVIS Server - WebSocket backend for real-time voice assistant
  */
 
+import 'dotenv/config';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname } from 'path';
 import { z } from 'zod';
 import type { JarvisConfig, ServerMessage, VoiceCommand, AssistantResponse, ConversationMessage } from '../shared/types.js';
 import { DEFAULT_CONFIG } from '../shared/types.js';
@@ -14,7 +15,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
-const CLIENT_PORT = 5173;
 
 // In-memory session store (replace with Redis in production)
 const sessions = new Map<string, Session>();
@@ -53,10 +53,10 @@ function createSession(ws: WebSocket): Session {
 async function callLLM(session: Session, userMessage: string): Promise<string> {
   const { config, history } = session;
   
-  const messages = [
-    { role: 'system' as const, content: config.systemPrompt },
-    ...history.slice(-10), // Keep last 10 messages for context
-    { role: 'user' as const, content: userMessage }
+  const messages: ConversationMessage[] = [
+    { role: 'system', content: config.systemPrompt },
+    ...history.slice(-10),
+    { role: 'user', content: userMessage }
   ];
 
   try {
@@ -78,7 +78,7 @@ async function callLLM(session: Session, userMessage: string): Promise<string> {
 
 async function callOpenAI(config: JarvisConfig, messages: ConversationMessage[]): Promise<string> {
   const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OpenAI API key not configured');
+  if (!apiKey) return "OpenAI API key not configured. Please add it in Settings or .env file.";
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -105,7 +105,7 @@ async function callOpenAI(config: JarvisConfig, messages: ConversationMessage[])
 
 async function callAnthropic(config: JarvisConfig, messages: ConversationMessage[]): Promise<string> {
   const apiKey = config.apiKey || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('Anthropic API key not configured');
+  if (!apiKey) return "Anthropic API key not configured. Please add it in Settings or .env file.";
 
   const systemMessage = messages.find(m => m.role === 'system');
   const userMessages = messages.filter(m => m.role !== 'system');
@@ -136,7 +136,6 @@ async function callAnthropic(config: JarvisConfig, messages: ConversationMessage
 }
 
 async function callLocalLLM(config: JarvisConfig, messages: ConversationMessage[]): Promise<string> {
-  // For Ollama or local endpoints
   const baseUrl = process.env.LOCAL_LLM_URL || 'http://localhost:11434';
   
   const response = await fetch(`${baseUrl}/api/chat`, {
@@ -158,17 +157,12 @@ async function callLocalLLM(config: JarvisConfig, messages: ConversationMessage[
 // Action handlers
 async function executeAction(session: Session, actionType: string, payload: Record<string, unknown>): Promise<void> {
   console.log(`Executing action: ${actionType}`, payload);
-  
-  // Extend with your custom actions
   switch (actionType) {
     case 'web_search':
-      // Implement web search
       break;
     case 'smart_home':
-      // Implement smart home control
       break;
     case 'run_script':
-      // Implement script execution
       break;
     default:
       console.warn(`Unknown action type: ${actionType}`);
@@ -230,20 +224,16 @@ function handleMessage(session: Session, data: unknown) {
 async function processCommand(session: Session, voiceCommand: VoiceCommand) {
   const { transcript } = voiceCommand;
   
-  // Add to history
   session.history.push({
     role: 'user',
     content: transcript,
     timestamp: voiceCommand.timestamp
   });
 
-  // Send transcript confirmation
   broadcast(session, { type: 'transcript', payload: voiceCommand });
 
-  // Get LLM response
   const responseText = await callLLM(session, transcript);
 
-  // Add assistant response to history
   const responseTimestamp = Date.now();
   session.history.push({
     role: 'assistant',
@@ -251,7 +241,6 @@ async function processCommand(session: Session, voiceCommand: VoiceCommand) {
     timestamp: responseTimestamp
   });
 
-  // Send response
   const response: AssistantResponse = {
     id: generateId(),
     text: responseText,
@@ -296,7 +285,6 @@ wss.on('connection', (ws) => {
     console.error(`Session error ${session.id}:`, err);
   });
 
-  // Send welcome
   broadcast(session, { 
     type: 'status', 
     payload: { 
